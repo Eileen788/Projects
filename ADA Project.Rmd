@@ -1,0 +1,494 @@
+---
+title: "ADA Project"
+output: html_document
+date: "2024-11-27"
+---
+
+```{r}
+# Clear the entire environment
+rm(list = ls())
+
+# Optional: Print a message to confirm clearing
+print("R environment cleared.")
+
+# Optional: Check if the environment is empty (should return TRUE)
+is.null(ls())
+```
+
+```{r}
+library(tidyverse)
+library(table1)
+library(haven)
+library(magrittr)
+library(GGally)
+library(ggfortify)
+library(dplyr)
+library(ggplot2)
+library(gmodels)
+library(grid)
+library(png)
+library(MASS)
+library(haven)
+library(labelled)
+library(gtsummary)
+library(here)
+library(foreign)
+library(ResourceSelection)
+library(pROC)
+library(DiagrammeR)
+library(broom)
+```
+
+```{r}
+capstone<- read.csv("C:\\Users\\Eileen\\Downloads\\HVIP_Master.csv")
+
+duplicated(capstone$pat_uuid)
+
+table(duplicated(capstone$pat_uuid))
+
+# Remove duplicates
+capstone_unique <- capstone %>% distinct(pat_uuid, .keep_all = TRUE)
+
+
+table(duplicated(capstone_unique$pat_uuid))
+
+summary(capstone_unique)
+```
+
+```{r}
+capstone_unique <- capstone_unique %>%
+  rowwise() %>%
+  mutate(
+    gunshot_wound = if_else(str_detect(alldx, "E965|E985|X93|X94|X95|Y22|Y23|Y24"), 1, 0),       # GSW 
+    penetrating_injury = if_else(str_detect(alldx, "E966|X99|Y28"), 1, 0),                        # Penetrating Injury 
+    blunt_force_trauma = if_else(str_detect(alldx, "E968|Y00|Y01|Y04|Y08|Y09|E983|E987|E988"), 1, 0) # Blunt Force Trauma
+  ) %>%
+  ungroup()
+
+capstone_unique <- capstone_unique %>%
+  mutate(injury_type = case_when(
+    gunshot_wound == 1 ~ "Gunshot Wound",
+    penetrating_injury == 1 ~ "Penetrating Injury",
+    blunt_force_trauma == 1 ~ "Blunt Force Trauma",
+    TRUE ~ "No Injury"  # 
+  ))
+
+```
+
+```{r}
+#  Recode death status
+capstone_unique <- capstone_unique %>%
+   mutate(death_f = case_when(death %in% 1 ~ "Dead",
+                            death %in% 0 ~ "Alive",
+                           ),
+          death_f = factor(death_f, levels = c("Dead","Alive"))) 
+
+#  Recode death status
+capstone_unique <- capstone_unique %>%
+   mutate(death_f = case_when(death %in% 1 ~ "Dead",
+                            death %in% 0 ~ "Alive",
+                           ),
+          death_f = factor(death_f, levels = c("Dead","Alive")))  
+```
+
+
+```{r}
+#  Recode Race
+capstone_unique <- capstone_unique %>%
+  mutate(race_f = case_when(race %in% 1 ~ "White",
+                           race %in% 2 ~ "Black/African American",
+                           race %in% c(3,5) ~ "Other",
+                           race %in% 4 ~ "Asian",
+                           race %in% c(6,9) ~ NA,
+                           race %in% 7 ~ "Multi racial",
+            ),
+         race_f = factor(race_f, levels = c("White","Black/African American","Other","Asian", "Multi racial")))
+
+
+#  Recode Ethnicity
+capstone_unique <- capstone_unique %>%
+  mutate(ethnicity_f = case_when(ethnicity %in% 1 ~ "Hispanic or Latino",
+                           ethnicity %in% 2 ~ "Not Hispanic or Latino",
+                           ethnicity %in% 9 ~ NA),
+         ethnicity_f = factor(ethnicity_f, levels = c("Hispanic or Latino","Not Hispanic or Latino")))
+
+
+#  Recode gender
+ capstone_unique <- capstone_unique %>%
+   mutate(gender_f = case_when(gender %in% 1 ~ "Male",
+                            gender %in% 2 ~ "Female",
+                            gender %in% 9 ~ NA),
+          gender_f = factor(gender_f, levels = c("Male","Female")))
+
+ capstone_unique <- capstone_unique %>%
+  mutate(pripay_f = case_when(
+    pripay == 6 ~ "Non Insured",
+    pripay %in% c(3, 5, 7, 14, 15, 20, 21, 22, 23, 24, 25) ~ "Private Insurance",
+    pripay %in% c(1, 2, 4, 9, 11, 12, 13, 17, 19) ~ "Government Insurance",
+    pripay %in% c(8, 10) ~ NA
+  ))
+```
+
+```{r}
+# Ensure the date columns are in Date format
+capstone_unique5 <- capstone_unique4 %>%
+  mutate(
+    adate = as.Date(adate, format = "%Y-%m-%d"),
+    ddate = as.Date(ddate, format = "%Y-%m-%d")
+  )
+
+# Handle missing admission dates
+capstone_unique5 <- capstone_unique5 %>%
+  mutate(
+    length_of_stay = if_else(
+      !is.na(adate),
+      as.numeric(ddate - adate),  # Calculate stay duration if admission_date exists
+      0  # Assume 0 days for missing admission_date
+    ),
+    admitted = if_else(
+      !is.na(adate) & length_of_stay > 0, "Yes", "No"  # Define admission only if length_of_stay > 0
+    )
+  )
+
+
+```
+
+```{r}
+#cleaning data
+
+capstone_unique1 <- capstone_unique %>%
+  drop_na(gender_f) 
+
+capstone_unique2 <- capstone_unique1 %>%
+  drop_na(ethnicity_f) 
+
+capstone_unique3 <- capstone_unique2 %>%
+  drop_na(race_f) 
+  
+capstone_unique4 <- capstone_unique3 %>%
+drop_na(pripay_f)
+
+ex1 <- nrow(capstone_unique) - nrow(capstone_unique1)
+ex2 <- nrow(capstone_unique1) - nrow(capstone_unique2)
+ex3 <- nrow(capstone_unique2) - nrow(capstone_unique3)
+ex4 <- nrow(capstone_unique3) - nrow(capstone_unique4)
+
+```
+
+```{r}
+summary(capstone_unique4)
+```
+
+#drawing figure 1
+```{r}
+figure1 <- grViz("digraph flowchart {
+     
+      node [fontname = Helvetica, shape = rectangle, fontsize=15] 
+      
+      node1 [label = '@@1']
+      node2 [label = '@@2']
+      node3 [label = '@@3']
+      node4 [label = '@@4']
+      node5 [label = '@@5']
+      
+      node1 -> node2 -> node3 -> node4 -> node5 
+}
+ 
+      [1]: 'Violence Injury Records after removal of duplicates n= 76,013'
+      [2]: 'Excluding 16 individuals with missing data on gender n = 75,997'
+      [3]: 'Excluding 214 individuals with missing data on ethnicity n = 75,783'
+      [4]: 'Excluding 2722 individuals with missing data on race n = 73,061'
+      [5]: 'Excluding 2693 individuals with missing data on primary payment method n = 70,368'
+      ")
+figure1
+```
+
+```{r}
+# export figure
+
+figure1 %>%
+  DiagrammeRsvg::export_svg() %>% 
+  charToRaw() %>% 
+  rsvg::rsvg_pdf("Figure 1.pdf")
+```
+
+#drawing table 1
+```{r}
+
+
+# Custom summary functions for age and length_of_stay
+my_summary_function_age <- function(x) {
+  if (length(na.omit(x)) == 0) return("NA")
+  paste0("Mean: ", round(mean(x, na.rm=TRUE), 1), 
+         " (SD: ", round(sd(x, na.rm=TRUE), 1), ")")
+}
+
+my_summary_function_los <- function(x) {
+  if (length(na.omit(x)) == 0) return("NA")
+  paste0("Median: ", round(median(x, na.rm=TRUE), 1), 
+         " (IQR: ", round(quantile(x, 0.25, na.rm=TRUE), 1), " - ", 
+         round(quantile(x, 0.75, na.rm=TRUE), 1), ")")
+}
+
+capstone_unique5 <- capstone_unique5 %>%
+  mutate(los_category = case_when(
+    length_of_stay <= 3  ~ "Short (≤3 days)",
+    length_of_stay <= 7  ~ "Moderate (4-7 days)",
+    length_of_stay <= 14 ~ "Long (8-14 days)",
+    length_of_stay > 14  ~ "Very Long (>14 days)"
+  ))
+
+# Generate Table 1 stratified by los_category (default rendering for continuous variables)
+table1(~ age + gender_f + race_f + ethnicity_f + pripay_f + injury_type| los_category, 
+       data = capstone_unique5)
+
+```
+
+```{r}
+#Adding labels to the variables 
+
+
+label(capstone_unique5$age)<-"Age (years)"
+label(capstone_unique5$gender_f)<-"Sex"
+label(capstone_unique5$race_f)<-"Race"
+label(capstone_unique5$ethnicity_f)<-"Ethnicity"
+label(capstone_unique5$pripay_f)<-"Insurance at diagnosis"
+label(capstone_unique5$injury_type)<-"Injury Type"
+label(capstone_unique5$los_category)<-"Length of Stay"
+
+table1(~ age + gender_f + race_f + ethnicity_f + pripay_f + injury_type| los_category, 
+       data = capstone_unique5)
+```
+
+
+```{r}
+# Stacked bar plot: survival status by injury type
+ggplot(capstone_unique5, aes(x = injury_type, fill = los_category)) +
+  geom_bar(position = "stack") +
+  labs(title = "Injury Type by length of stay", x = "Injury Type", y = "Count", fill = "los_category") +
+  theme_minimal()
+
+
+```
+
+```{r}
+
+# Stacked bar plot: gender by injury type
+ggplot(capstone_unique5, aes(x = los_category, fill = gender_f)) +
+  geom_bar(position = "stack") +
+  labs(title = "Length of Stay by Gender", x = "Length of Stay", y = "Count", fill = "Gender") +
+  theme_minimal()
+```
+
+```{r}
+# Create the DAG
+dag <- dagitty('
+  dag {
+    Variables
+    Age -> InjuryType -> LengthofStay
+    Gender -> InjuryType
+    Gender -> LengthofStay
+    EthnicityRace -> InjuryType
+    EthnicityRace -> LengthofStay
+    InsuranceStatus -> InjuryType
+    InsuranceStatus -> LengthofStay
+    Age -> LengthofStay
+  }
+')
+
+# Plot the DAG
+ggdag(dag, layout = "circle") +
+  ggtitle("DAG for Injury Type and Length of Stay Analysis")
+
+```
+
+
+```{r}
+# Ensure los_category is a factor
+capstone_unique5 <- capstone_unique5 %>%
+  mutate(los_category = factor(los_category, 
+                               levels = c("Short (≤3 days)", "Moderate (4-7 days)", 
+                                          "Long (8-14 days)", "Very Long (>14 days)")))
+
+# ---- BIVARIATE ANALYSIS ----
+# Summary table with Chi-square (categorical) and ANOVA/Kruskal-Wallis (continuous)
+bivariate_table <- capstone_unique5 %>%
+  select(los_category, age, gender_f, race_f, ethnicity_f, pripay_f, injury_type, length_of_stay) %>%
+  tbl_summary(
+    by = los_category, # Outcome variable
+    statistic = list(
+      all_continuous() ~ "{median} ({IQR})",  # Median & IQR for continuous
+      all_categorical() ~ "{n} ({p}%)"        # Count & percentage for categorical
+    ),
+    missing = "no"
+  ) %>%
+  add_p(test = list(
+    all_continuous() ~ "kruskal.test", # Kruskal-Wallis for non-parametric continuous data
+    all_categorical() ~ "chisq.test"   # Chi-square test for categorical variables
+  )) %>%
+  add_stat_label() # Adds test labels (e.g., Chi-square, Kruskal-Wallis)
+
+# Print bivariate analysis table
+bivariate_table
+
+
+
+```
+The bivariate analysis shows significant associations between survival status and the variables studied. Age showed a strong relationship, with notable differences in mean age between survivors and non-survivors (p < 0.001). Gender also emerged as a significant factor, with survival rates differing substantially between males and females (p < 0.001). Race was significantly associated with survival (p < 0.001), indicating variation in outcomes across racial groups, while insurance status exhibited a very strong influence on survival (p < 0.001), underscoring disparities based on healthcare access and coverage. Among all predictors, injury type demonstrated the strongest association with survival outcomes (p < 0.001), highlighting the critical role of the nature of the injury in determining survival likelihood.However, ethnicity did not show a significant association with survival (p = 0.057). This suggests that while demographic factors like age, gender, and race are crucial, ethnicity alone may not play a direct role in survival outcomes. 
+
+```{r}
+#logistic regression without adjusting for confounders
+
+log_reg <- glm(death_f ~ injury_type, data = capstone_unique4, family = binomial)
+
+
+summary(log_reg)
+
+exp_coef <- exp(coef(log_reg)) # Odds Ratios
+exp_ci <- exp(confint(log_reg)) # Confidence Intervals
+
+# Combine results into a table
+results <- cbind(Odds_Ratio = exp_coef, CI_Lower = exp_ci[, 1], CI_Upper = exp_ci[, 2])
+results
+```
+
+The logistic regression model assessed the relationship between injury type and survival status, with "Blunt Force Trauma" as the reference category. The findings highlight significant associations for all injury types compared to the reference.
+
+Gunshot wounds were strongly associated with lower odds of survival, with an odds ratio of 0.044 (95% CI: 0.034–0.055, p < 0.001), indicating a substantially higher likelihood of death. "No Injury" was also linked to decreased survival, though the association was less severe, with an odds ratio of 0.377 (95% CI: 0.294–0.479, p < 0.001). Penetrating injuries similarly showed reduced odds of survival, with an odds ratio of 0.453 (95% CI: 0.302–0.699, p < 0.001), reflecting a moderate effect. 
+
+These results underscore the significant role injury type plays in survival outcomes. Gunshot wounds, in particular, pose the highest mortality risk, while penetrating injuries and "No Injury" also significantly impact survival but to a lesser extent. The model's overall fit, as indicated by an AIC of 9024.4, supports the robustness of these associations.
+
+```{r}
+# Logistic regression with adjustment for potential confounders
+log_reg_adjusted <- glm(
+  formula = death_f ~ injury_type + age + gender_f + race_f + pripay_f,
+  family = binomial,
+  data = capstone_unique4
+)
+
+# Summary of the adjusted model
+summary(log_reg_adjusted)
+
+
+# Extract Odds Ratios and Confidence Intervals
+adjusted_results <- tidy(log_reg_adjusted, exponentiate = TRUE, conf.int = TRUE) %>%
+  select(term, estimate, conf.low, conf.high, p.value) %>%
+  rename(Odds_Ratio = estimate, CI_Lower = conf.low, CI_Upper = conf.high, P_Value = p.value)
+
+# Print the results
+print(adjusted_results)
+
+```
+
+The logistic regression model, adjusted for demographic and socioeconomic variables, identifies injury type and insurance status as key predictors of survival status. After adjusting for age, gender, race, and ethnicity, gunshot wounds remained strongly associated with reduced odds of survival (OR: 0.058), corresponding to a 94% reduction in survival likelihood compared to the reference group. Penetrating injuries (OR: 0.606) and no injuries (OR: 0.321) were also associated with lower odds of death, though the effects were less pronounced. Gender and ethnicity also had significant associations, with females showing 56% higher odds of death (OR: 1.561) compared to males. 
+
+Insurance status remained a critical determinant even after adjustments, with uninsured individuals having significantly lower odds of death (OR: 0.362) compared to those with government insurance, while private insurance holders had higher odds of death (OR: 1.414). Age showed a minimal protective effect (OR: 0.996) with each additional year, while racial categories like American Indian/Alaskan Native or Native Hawaiian/Pacific Islander had unstable odds ratios due to sparse data. These results emphasize the importance of injury type and insurance status in survival outcomes and highlight the robustness of these associations after accounting for key confounding variables.
+
+```{r}
+
+# Fit the nested models
+# Model 1: Basic model with fewer predictors
+model_1 <- glm(death_f ~ age + gender_f, 
+               data = capstone_unique4, family = binomial(link = "logit"))
+
+# Model 2: Extended model with more predictors
+model_2 <- glm(death_f ~ age + gender_f + race_f + injury_type + pripay_f, 
+               data = capstone_unique4, family = binomial(link = "logit"))
+
+# Perform the Likelihood Ratio Test
+lr_test <- lrtest(model_1, model_2)
+
+# Print the results
+print(lr_test)
+
+# Optional: Use broom for a cleaner summary
+lr_summary <- tidy(lr_test)
+print(lr_summary)
+
+```
+Model 2 is the better model, as it fits the data much more effectively, evidenced by its higher log-likelihood and the significant improvement in fit over Model 1. Adding race, injury type, and insurance status to the model significantly enhances its ability to predict survival (p < 0.001).
+
+```{r}
+
+# Hosmer-Lemeshow Test
+hoslem_test <- hoslem.test(log_reg_adjusted$y, fitted(log_reg_adjusted), g = 10)
+print(hoslem_test)
+
+# Deviance and Null Deviance
+null_deviance <- log_reg_adjusted$null.deviance
+residual_deviance <- log_reg_adjusted$deviance
+df_null <- log_reg_adjusted$df.null
+df_residual <- log_reg_adjusted$df.residual
+cat("Null Deviance:", null_deviance, "on", df_null, "degrees of freedom\n")
+cat("Residual Deviance:", residual_deviance, "on", df_residual, "degrees of freedom\n")
+cat("Chi-square test: p-value =", pchisq(null_deviance - residual_deviance, df_null - df_residual, lower.tail = FALSE), "\n")
+
+# ROC Curve and AUC
+roc_curve <- roc(log_reg_adjusted$y, fitted(log_reg_adjusted))
+auc_value <- auc(roc_curve)
+cat("AUC:", auc_value, "\n")
+
+# Plot ROC Curve
+plot(roc_curve, main = "ROC Curve for Logistic Regression Model", col = "blue")
+abline(a = 0, b = 1, lty = 2, col = "red")  # Diagonal line for random chance
+
+```
+The logistic regression model demonstrates good discrimination between survival and death, with an AUC of 0.8337, indicating strong predictive ability. However, the Hosmer-Lemeshow goodness-of-fit test (X² = 146.96, p < 2.2e-16) which is significant suggesting a poor fit. The significant reduction in deviance (from 10374.29 to 8621.094) shows the improvement brought by including predictors.
+
+```{r}
+#checking for multicolinearity
+
+car::vif(log_reg_adjusted)
+```
+All predictors show low GVIF values, meaning there is no evidence of significant multicollinearity among the predictor variables in my model. Therefore, the model's estimates are unlikely to be distorted by highly correlated predictors.
+
+```{r}
+
+
+# Assume `data` is your dataset and `death_f` is your binary outcome variable
+# Full model without interaction
+model_full <- glm(death_f ~ age + gender_f + race_f + injury_type + pripay_f, 
+                  data = capstone_unique4, 
+                  family = binomial())
+
+# Model with interaction between insurance and injury type
+model_interaction <- glm(death_f ~ age + gender_f + race_f + injury_type * pripay_f, 
+                         data = capstone_unique4, 
+                         family = binomial())
+
+# Perform likelihood ratio test
+lr_test <- lrtest(model_full, model_interaction)
+print(lr_test)
+
+# Check if the p-value is significant
+if (lr_test$`Pr(>Chisq)`[2] < 0.05) {
+  cat("The interaction term is significant. Stratifying by insurance type...\n")
+
+  # Stratified analysis by insurance type
+  insurance_types <- unique(capstone_unique4$pripay_f)
+  stratified_results <- list()
+
+  for (insurance in insurance_types) {
+    cat("\nResults for Insurance Type:", insurance, "\n")
+
+    # Subset data for the specific insurance type
+    data_subset <- subset(capstone_unique4, pripay_f == insurance)
+
+    # Fit model for this subset
+    model_stratified <- glm(death_f ~ age + gender_f + race_f + injury_type, 
+                            data = data_subset, 
+                            family = binomial())
+
+    # Summarize results
+    summary_stratified <- summary(model_stratified)
+    print(summary_stratified)
+
+    # Save results to list
+    stratified_results[[insurance]] <- summary_stratified
+  }
+} else {
+  cat("The interaction term is not significant. No stratification performed.\n")
+}
+
+```
+

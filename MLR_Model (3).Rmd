@@ -1,0 +1,86 @@
+---
+title: "MLR Model"
+authors: "Gifty, Eileen"
+date: "2024-03-14"
+output: html_document
+---
+
+
+
+
+```{r}
+#Installing necessary packages to run model
+install.packages(shiny)
+install.packages("shinythemes")
+```
+
+
+
+```{r}
+#Opening libraries
+library(shiny)
+library(shinythemes)
+
+# Defining UI for application
+ui <- fluidPage(
+    titlePanel("Systolic Blood Pressure Prediction"  ),
+    
+     theme = shinytheme("cosmo"), # Apply a shinytheme for a quick style boost
+    
+    
+    sidebarLayout(
+        sidebarPanel(
+            selectInput("ageCategory", "Age Category", 
+                        choices = c("<60" = 0, ">=61" = 1)),
+            numericInput("bmi", "BMI", 25),
+            selectInput("sex", "Sex", choices = c("Male" = 0, "Female" = 1)),
+            numericInput("cholesterol", "Total Cholesterol (mg/dL)", 200),
+            selectInput("smoker", "Current Smoker", choices = c("Yes" = 1, "No" = 0)),
+            selectInput("diabetes", "Diabetes", choices = c("Yes" = 1, "No" = 0)),
+            actionButton("predict", "Predict")
+        ),
+        
+        mainPanel(
+            textOutput("prediction")
+        )
+    )
+)
+
+# Defining server logic
+server <- function(input, output) {
+    prediction <- eventReactive(input$predict, {
+        beta_0 <- 84.074
+        beta_age <- 13.553 # This will apply for age >=61
+        beta_bmi <- 1.353
+        beta_cholesterol <- 0.051
+        beta_smoker <- -1.475
+        beta_diabetes <- 9.538
+        beta_sex <- 1.805
+        
+        # Converting inputs to numeric as needed
+        ageCategory <- as.numeric(input$ageCategory)
+        bmi <- as.numeric(input$bmi)
+        cholesterol <- as.numeric(input$cholesterol)
+        smoker <- as.numeric(input$smoker)
+        diabetes <- as.numeric(input$diabetes)
+        sex <- as.numeric(input$sex)
+        
+        # Adjusted calculation to include age category
+        age_adjusted <- ifelse(ageCategory == 1, beta_age, 0)
+        
+        predicted_bp <- beta_0 + age_adjusted + (beta_bmi * bmi) +
+                        (beta_cholesterol * cholesterol) + (beta_smoker * smoker) +
+                        (beta_diabetes * diabetes) + (beta_sex * sex)
+        
+        paste("Predicted Systolic Blood Pressure:", round(predicted_bp, 2), "mmHg")
+    })
+    
+    output$prediction <- renderText({
+        prediction()
+    })
+}
+
+# Run the application
+shinyApp(ui = ui, server = server)
+```
+
